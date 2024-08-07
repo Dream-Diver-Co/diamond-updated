@@ -2,17 +2,14 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion } = require('mongodb');
-const nodemailer = require('nodemailer');
 
 dotenv.config();
 const app = express();
 const port = process.env.PORT || 3000;
 const WEDDB = "Bridal";
 
-// MongoDB URI and email credentials
+// MongoDB URI
 const uri = "mongodb+srv://tahsifdreamdriver:gQPQQvx4ZkKxCGke@cluster0.n7jc7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
-const EMAIL_USER = process.env.EMAIL_USER;
-const EMAIL_PASS = process.env.EMAIL_PASS;
 
 // Middleware
 app.use(cors());
@@ -27,53 +24,98 @@ const client = new MongoClient(uri, {
   }
 });
 
-// Create Nodemailer transporter
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: EMAIL_USER,
-    pass: EMAIL_PASS,
-  },
-});
-
 async function run() {
   try {
     // Connect the client to the server
     await client.connect();
     console.log("Connected successfully to MongoDB!");
 
-    // Select the database and collection
     const appCollection = client.db(WEDDB).collection("appointment");
+    const offDaysCollection = client.db(WEDDB).collection("offdays");
 
     // Endpoint to add an appointment
     app.post('/addapp', async (req, res) => {
       try {
         const newApp = req.body;
+        const existingAppointment = await appCollection.findOne({ datetime: newApp.datetime });
+        
+        if (existingAppointment) {
+          return res.status(400).json({ message: 'Selected time slot is already booked.' });
+        }
+
+        const isOffDay = await offDaysCollection.findOne({ date: newApp.datetime.split('T')[0] });
+        if (isOffDay) {
+          return res.status(400).json({ message: 'Selected day is not available for appointments.' });
+        }
+
         const result = await appCollection.insertOne(newApp);
-
-        // Send email to admin
-        const adminMailOptions = {
-          from: EMAIL_USER,
-          to: 'tahsif.cse@gmail.com',
-          subject: 'New Appointment Booking',
-          text: `New appointment booked by ${newApp.name}. Address: ${newApp.address}, Date & Time: ${newApp.datetime}, Number: ${newApp.number}, Email: ${newApp.email}`,
-        };
-
-        // Send email to user
-        const userMailOptions = {
-          from: EMAIL_USER,
-          to: newApp.email,
-          subject: 'Appointment Confirmation',
-          text: 'Your appointment has been successfully booked.',
-        };
-
-        // Send both emails
-        await transporter.sendMail(adminMailOptions);
-        await transporter.sendMail(userMailOptions);
 
         res.status(201).send(result);
       } catch (error) {
-        res.status(500).send({ message: "Failed to add appointment or send emails", error });
+        res.status(500).send({ message: "Failed to add appointment", error });
+      }
+    });
+
+    // Endpoint to check available time slots for a given date
+    app.get('/check-available-time', async (req, res) => {
+      try {
+        const { date } = req.query;
+        const startDate = new Date(date);
+        const endDate = new Date(date);
+        endDate.setDate(startDate.getDate() + 1); // Check availability for the whole day
+
+        const appointments = await appCollection.find({
+          datetime: {
+            $gte: startDate.toISOString(),
+            $lt: endDate.toISOString()
+          }
+        }).toArray();
+
+        const bookedSlots = appointments.map(app => {
+          const time = new Date(app.datetime).toTimeString().split(' ')[0].slice(0, 5);
+          return time;
+        });
+
+        // Define possible time slots
+        const possibleSlots = ['11:30', '13:00', '15:00', '16:00'];
+        const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
+
+        res.json({ slots: availableSlots });
+      } catch (error) {
+        res.status(500).json({ message: "Failed to check available slots", error });
+      }
+    });
+
+    // Endpoint to check if a time slot is available
+    app.get('/check-slot', async (req, res) => {
+      try {
+        const { datetime } = req.query;
+
+        const existingAppointment = await appCollection.findOne({ datetime });
+        if (existingAppointment) {
+          return res.json({ available: false });
+        }
+
+        const isOffDay = await offDaysCollection.findOne({ date: datetime.split('T')[0] });
+        if (isOffDay) {
+          return res.json({ available: false });
+        }
+
+        res.json({ available: true });
+      } catch (error) {
+        res.status(500).json({ message: "Failed to check slot availability", error });
+      }
+    });
+
+    // Endpoint to mark days as off for appointments
+    app.post('/offdays', async (req, res) => {
+      try {
+        const { date } = req.body;
+        const result = await offDaysCollection.insertOne({ date });
+
+        res.status(201).json(result);
+      } catch (error) {
+        res.status(500).json({ message: "Failed to add off day", error });
       }
     });
 
