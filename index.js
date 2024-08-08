@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const { MongoClient, ServerApiVersion } = require('mongodb');
+const nodemailer = require('nodemailer');
 
 dotenv.config();
 const app = express();
@@ -24,6 +25,35 @@ const client = new MongoClient(uri, {
   }
 });
 
+// Create a transporter object using SMTP transport
+const transporter = nodemailer.createTransport({
+  host: 'smtp.ethereal.email',
+  port: 587,
+  secure: false, // true for 465, false for other ports
+  auth: {
+    user: process.env.EMAIL_USER, // Replace with your Ethereal email username
+    pass: process.env.EMAIL_PASS, // Replace with your Ethereal email password
+  },
+});
+
+// Function to send an email
+async function sendConfirmationEmail(to, appointmentDetails) {
+  const mailOptions = {
+    from: '"Your Service" tahsif.dreamdriver@gmail.com', // Replace with your email
+    to: `${to}, tahsif.cse@gmail.com`, // Send email to both user and fixed address
+    subject: 'Appointment Confirmation',
+    text: `Hello ${appointmentDetails.name},\n\nYour appointment is confirmed for ${appointmentDetails.datetime}. We look forward to seeing you.\n\nBest regards,\nYour Service`,
+    html: `<p>Hello ${appointmentDetails.name},</p><p>Your appointment is confirmed for ${appointmentDetails.datetime}. We look forward to seeing you.</p><p>Best regards,<br>Your Service</p>`,
+  };
+
+  try {
+    await transporter.sendMail(mailOptions);
+    console.log('Email sent successfully');
+  } catch (error) {
+    console.error('Error sending email:', error);
+  }
+}
+
 async function run() {
   try {
     // Connect the client to the server
@@ -38,7 +68,7 @@ async function run() {
       try {
         const newApp = req.body;
         const existingAppointment = await appCollection.findOne({ datetime: newApp.datetime });
-        
+
         if (existingAppointment) {
           return res.status(400).json({ message: 'Selected time slot is already booked.' });
         }
@@ -49,6 +79,9 @@ async function run() {
         }
 
         const result = await appCollection.insertOne(newApp);
+
+        // Send confirmation email
+        await sendConfirmationEmail(newApp.email, newApp);
 
         res.status(201).send(result);
       } catch (error) {
