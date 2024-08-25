@@ -5,11 +5,11 @@ const { MongoClient, ServerApiVersion } = require('mongodb');
 
 dotenv.config();
 const app = express();
-const port = process.env.PORT || 3000;
+const port = process.env.PORT || 5000;
 const WEDDB = "Bridal";
 
 // MongoDB URI
-const uri = "mongodb+srv://tahsifdreamdriver:gQPQQvx4ZkKxCGke@cluster0.n7jc7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
+const uri = process.env.MONGODB_URI || "mongodb+srv://tahsifdreamdriver:gQPQQvx4ZkKxCGke@cluster0.n7jc7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 // Middleware
 app.use(cors());
@@ -35,24 +35,27 @@ async function run() {
 
     // Endpoint to add an appointment
     app.post('/addapp', async (req, res) => {
-      try {
-        const newApp = req.body;
-        const existingAppointment = await appCollection.findOne({ datetime: newApp.datetime });
+      const { datetime } = req.body;
+      const date = datetime.split('T')[0];
 
+      try {
+        // Check if the date is an off day
+        const isOffDay = await offDaysCollection.findOne({ date });
+        if (isOffDay) {
+          return res.status(400).json({ message: 'Selected date is an off day.' });
+        }
+
+        // Check if the time slot is already booked
+        const existingAppointment = await appCollection.findOne({ datetime });
         if (existingAppointment) {
           return res.status(400).json({ message: 'Selected time slot is already booked.' });
         }
 
-        const isOffDay = await offDaysCollection.findOne({ date: newApp.datetime.split('T')[0] });
-        if (isOffDay) {
-          return res.status(400).json({ message: 'Selected day is not available for appointments.' });
-        }
-
-        const result = await appCollection.insertOne(newApp);
-
-        res.status(201).send(result);
+        // Insert the new appointment
+        const result = await appCollection.insertOne(req.body);
+        res.status(201).json(result);
       } catch (error) {
-        res.status(500).send({ message: "Failed to add appointment", error });
+        res.status(500).json({ message: "Failed to add appointment", error });
       }
     });
 
@@ -77,7 +80,7 @@ async function run() {
         });
 
         // Define possible time slots
-        const possibleSlots = ['11:30', '13:00', '15:00', '16:00'];
+        const possibleSlots = ['11:30', '12:30', '14:00', '16:00'];
         const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
 
         res.json({ slots: availableSlots });
@@ -90,13 +93,16 @@ async function run() {
     app.get('/check-slot', async (req, res) => {
       try {
         const { datetime } = req.query;
+        const date = datetime.split('T')[0];
 
+        // Check if the time slot is already booked
         const existingAppointment = await appCollection.findOne({ datetime });
         if (existingAppointment) {
           return res.json({ available: false });
         }
 
-        const isOffDay = await offDaysCollection.findOne({ date: datetime.split('T')[0] });
+        // Check if the date is an off day
+        const isOffDay = await offDaysCollection.findOne({ date });
         if (isOffDay) {
           return res.json({ available: false });
         }
@@ -107,12 +113,27 @@ async function run() {
       }
     });
 
+    // Endpoint to fetch off days
+    app.get('/offdays', async (req, res) => {
+      try {
+        const result = await offDaysCollection.find().toArray();
+        res.json(result.map(day => day.date)); // Send only the dates
+      } catch (error) {
+        res.status(500).json({ message: "Failed to fetch off days", error });
+      }
+    });
+
     // Endpoint to mark days as off for appointments
     app.post('/offdays', async (req, res) => {
       try {
         const { date } = req.body;
-        const result = await offDaysCollection.insertOne({ date });
+        const existingOffDay = await offDaysCollection.findOne({ date });
 
+        if (existingOffDay) {
+          return res.status(400).json({ message: "This day is already marked as off." });
+        }
+
+        const result = await offDaysCollection.insertOne({ date });
         res.status(201).json(result);
       } catch (error) {
         res.status(500).json({ message: "Failed to add off day", error });
