@@ -9,7 +9,7 @@ const port = process.env.PORT || 5000;
 const WEDDB = "Bridal";
 
 // MongoDB URI
-const uri = process.env.MONGODB_URI || "your-mongodb-uri-here";
+const uri = process.env.MONGODB_URI || "mongodb+srv://tahsifdreamdriver:gQPQQvx4ZkKxCGke@cluster0.n7jc7.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 
 // Middleware
 app.use(cors());
@@ -80,7 +80,7 @@ async function run() {
         });
 
         // Define possible time slots
-        const possibleSlots = ['11:30', '12:30', '2:00', '4:00'];
+        const possibleSlots = ['11:30', '12:30', '14:00', '16:00'];
         const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
 
         res.json({ slots: availableSlots });
