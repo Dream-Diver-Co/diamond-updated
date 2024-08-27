@@ -32,6 +32,141 @@ async function run() {
 
     const appCollection = client.db(WEDDB).collection("appointment");
     const offDaysCollection = client.db(WEDDB).collection("offdays");
+    const userCollection = client.db(WEDDB).collection("user");
+
+    // ...........admin+user 
+    
+    // jwt created......
+    app.post('/jwt', async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: '1h'
+      });
+      res.send({ token });
+    });
+
+    // verify token and admin..........
+    const verifyToken = (req, res, next) => {
+      console.log('inside verify token', req.headers);
+      if (!req.headers.authorization) {
+        // return res.status(401).send({ message: 'forbidden access' });
+        return res.send({ message: 'forbidden access' });
+
+      }
+      const token = req.headers.authorization.split(' ')[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          // return res.status(401).send({ message: 'forbidden access' });
+          return res.send({ message: 'forbidden access' });
+
+        }
+        req.decoded = decoded;
+        next();
+      });
+    };
+
+    const verifyAdmin = async (req, res, next) => {
+      const email = req.decoded.email;
+      const query = { email: email };
+      try {
+        const user = await userCollection.findOne(query);
+        const isAdmin = user?.role === 'admin';
+        if (!isAdmin) {
+          // return res.status(403).send('message', 'forbidden access');
+          return res.send({ message: 'forbidden access' });
+
+        }
+        next();
+      } catch (error) {
+        console.error('Error verifying admin:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    };
+
+    // user related API working for admin and user.................
+
+    app.get('/user', async (req, res) => {
+      console.log(req.headers);
+      try {
+        const result = await userCollection.find().toArray();
+        res.send(result);
+      } catch (error) {
+        console.error('Error fetching users:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // user retrieving working
+    app.get('/user/admin/:email', verifyToken, async (req, res) => {
+      const email = req.params.email;
+      if (email !== req.decoded.email) {
+        // return res.status(403).send('message', 'forbidden access');
+        return res.send({ message: 'forbidden access' });
+
+      }
+      const query = { email: email };
+      try {
+        const user = await userCollection.findOne(query);
+        let admin = false;
+        if (user) {
+          admin = user?.role === 'admin';
+        }
+        res.send({ admin });
+      } catch (error) {
+        console.error('Error retrieving user:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // user creation work..............
+    app.post('/user', async (req, res) => {
+      const user = req.body;
+      const query = { email: user.email };
+      try {
+        const exitUser = await userCollection.findOne(query);
+        if (exitUser) {
+          return res.send({ message: 'user already exists', insertedId: null });
+        }
+        const result = await userCollection.insertOne(user);
+        res.send(result);
+      } catch (error) {
+        console.error('Error creating user:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // user updated work
+    app.patch('/user/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const updatedDoc = {
+        $set: {
+          role: 'admin'
+        }
+      };
+      try {
+        const result = await userCollection.updateOne(filter, updatedDoc);
+        res.send(result);
+      } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // user deletion...........
+    app.delete('/user/:id', verifyToken, verifyAdmin, async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      try {
+        const result = await userCollection.deleteOne(query);
+        res.send(result);
+      } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
+
+    // ............end admin+user
 
     // Endpoint to add an appointment
     app.post('/addapp', async (req, res) => {
@@ -80,7 +215,7 @@ async function run() {
         });
 
         // Define possible time slots
-        const possibleSlots = ['11:30', '12:30', '14:00', '16:00'];
+        const possibleSlots = ['11:30', '12:30', '2:00', '4:00'];
         const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
 
         res.json({ slots: availableSlots });
