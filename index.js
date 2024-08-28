@@ -1,7 +1,10 @@
 const express = require('express');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId  } = require('mongodb');
+const jwt = require('jsonwebtoken'); // Import jsonwebtoken
+ 
+
 
 dotenv.config();
 const app = express();
@@ -44,21 +47,15 @@ async function run() {
       });
       res.send({ token });
     });
-
-    // verify token and admin..........
+   
     const verifyToken = (req, res, next) => {
-      console.log('inside verify token', req.headers);
       if (!req.headers.authorization) {
-        // return res.status(401).send({ message: 'forbidden access' });
-        return res.send({ message: 'forbidden access' });
-
+        return res.status(401).send({ message: 'Forbidden access' });
       }
       const token = req.headers.authorization.split(' ')[1];
       jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
         if (err) {
-          // return res.status(401).send({ message: 'forbidden access' });
-          return res.send({ message: 'forbidden access' });
-
+          return res.status(401).send({ message: 'Forbidden access' });
         }
         req.decoded = decoded;
         next();
@@ -67,14 +64,10 @@ async function run() {
 
     const verifyAdmin = async (req, res, next) => {
       const email = req.decoded.email;
-      const query = { email: email };
       try {
-        const user = await userCollection.findOne(query);
-        const isAdmin = user?.role === 'admin';
-        if (!isAdmin) {
-          // return res.status(403).send('message', 'forbidden access');
-          return res.send({ message: 'forbidden access' });
-
+        const user = await userCollection.findOne({ email });
+        if (user?.role !== 'admin') {
+          return res.status(403).send({ message: 'Forbidden access' });
         }
         next();
       } catch (error) {
@@ -82,6 +75,21 @@ async function run() {
         res.status(500).send('Internal Server Error');
       }
     };
+
+    app.get('/user/:id', async (req, res) => {
+      const userId = req.params.userId;
+      try {
+        const user = await userCollection.findOne({ _id: id});
+        if (user) {
+          res.send({ role: user.role });
+        } else {
+          res.status(404).send({ message: 'User not found' });
+        }
+      } catch (error) {
+        console.error('Error fetching user data:', error);
+        res.status(500).send('Internal Server Error');
+      }
+    });
 
     // user related API working for admin and user.................
 
@@ -100,40 +108,40 @@ async function run() {
     app.get('/user/admin/:email', verifyToken, async (req, res) => {
       const email = req.params.email;
       if (email !== req.decoded.email) {
-        // return res.status(403).send('message', 'forbidden access');
-        return res.send({ message: 'forbidden access' });
-
+          return res.send({ message: 'forbidden access' });
       }
       const query = { email: email };
       try {
-        const user = await userCollection.findOne(query);
-        let admin = false;
-        if (user) {
-          admin = user?.role === 'admin';
-        }
-        res.send({ admin });
+          const user = await userCollection.findOne(query);
+          let admin = false;
+          if (user) {
+              admin = user?.role === 'admin';
+          }
+          res.send({ admin });
       } catch (error) {
-        console.error('Error retrieving user:', error);
-        res.status(500).send('Internal Server Error');
+          console.error('Error retrieving user:', error);
+          res.status(500).send('Internal Server Error');
       }
-    });
+  });
+  
 
     // user creation work..............
     app.post('/user', async (req, res) => {
       const user = req.body;
       const query = { email: user.email };
       try {
-        const exitUser = await userCollection.findOne(query);
-        if (exitUser) {
-          return res.send({ message: 'user already exists', insertedId: null });
+        const existingUser = await userCollection.findOne(query);
+        if (existingUser) {
+          return res.send({ message: 'User already exists', insertedId: null });
         }
-        const result = await userCollection.insertOne(user);
+        const result = await userCollection.insertOne(user); // This line should insert a user
         res.send(result);
       } catch (error) {
         console.error('Error creating user:', error);
         res.status(500).send('Internal Server Error');
       }
     });
+    
 
     // user updated work
     app.patch('/user/admin/:id', verifyToken, verifyAdmin, async (req, res) => {
