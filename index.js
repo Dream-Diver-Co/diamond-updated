@@ -283,6 +283,30 @@ async function run() {
       }
     });
 
+    // ..............fetch data from backend
+  
+    app.get('/offdays/:date', async (req, res) => {
+      try {
+        const date = req.params.date;
+        console.log('Date parameter received:', date); // Debugging line
+        const offDay = await offDaysCollection.findOne({ date: date });
+    
+        if (offDay) {
+          res.json(offDay);
+        } else {
+          res.status(404).json({ message: 'No details found for this date' });
+        }
+      } catch (err) {
+        console.error(err);
+        res.status(500).json({ message: 'Server error' });
+      }
+    });
+    
+    
+    
+    
+    // .................end data from backend
+
     // Start the server
     app.listen(port, () => {
       console.log(`App listening on port ${port}`);
