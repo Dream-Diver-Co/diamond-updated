@@ -229,7 +229,31 @@ async function run() {
         }
       });
   
+    // .............fetch based on date..............
+    app.get('/app/:date', async (req, res) => {
+      const date = req.params.date; // 'YYYY-MM-DD'
+      console.log('Received date:', date); // Check what date is being received
       
+      try {
+        const details = await YourModel.find({
+          datetime: { $regex: `^${date}` }
+        });
+        
+        console.log('Fetched details:', details); // Check what is being fetched
+        
+        if (details.length === 0) {
+          return res.status(404).json({ message: 'No details found for this date.' });
+        }
+    
+        res.json(details);
+      } catch (error) {
+        console.error('Error fetching details:', error);
+        res.status(500).json({ error: 'Server error' });
+      }
+    });
+    
+    
+     
 
     // Endpoint to check available time slots for a given date
     app.get('/check-available-time', async (req, res) => {
@@ -293,22 +317,6 @@ async function run() {
       }
     });
 
-    // Endpoint to mark days as off for appointments
-    // app.post('/offdays', async (req, res) => {
-    //   try {
-    //     const { date } = req.body;
-    //     const existingOffDay = await offDaysCollection.findOne({ date });
-
-    //     if (existingOffDay) {
-    //       return res.status(400).json({ message: "This day is already marked as off." });
-    //     }
-
-    //     const result = await offDaysCollection.insertOne({ date });
-    //     res.status(201).json(result);
-    //   } catch (error) {
-    //     res.status(500).json({ message: "Failed to add off day", error });
-    //   }
-    // });
     app.post('/offdays', async (req, res) => {
       try {
         const { date } = req.body;
