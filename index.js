@@ -76,10 +76,26 @@ async function run() {
       }
     };
 
+    // app.get('/user/:id', async (req, res) => {
+    //   const userId = req.params.userId;
+    //   try {
+    //     const user = await userCollection.findOne({ _id: id});
+    //     if (user) {
+    //       res.send({ role: user.role });
+    //     } else {
+    //       res.status(404).send({ message: 'User not found' });
+    //     }
+    //   } catch (error) {
+    //     console.error('Error fetching user data:', error);
+    //     res.status(500).send('Internal Server Error');
+    //   }
+    // });
+
+    // user related API working for admin and user.................
     app.get('/user/:id', async (req, res) => {
-      const userId = req.params.userId;
+      const userId = req.params.id;
       try {
-        const user = await userCollection.findOne({ _id: id});
+        const user = await userCollection.findOne({ _id: new ObjectId(userId)});
         if (user) {
           res.send({ role: user.role });
         } else {
@@ -90,9 +106,7 @@ async function run() {
         res.status(500).send('Internal Server Error');
       }
     });
-
-    // user related API working for admin and user.................
-
+    
     app.get('/user', async (req, res) => {
       console.log(req.headers);
       try {
@@ -175,32 +189,47 @@ async function run() {
     });
 
     // ............end admin+user
-
-    // Endpoint to add an appointment
-    app.post('/addapp', async (req, res) => {
-      const { datetime } = req.body;
-      const date = datetime.split('T')[0];
-
+    // Endpoint to fetch appointment
+    // Endpoint to fetch appointments
+    // Endpoint to fetch appointments
+    app.get('/app', async (req, res) => {
       try {
-        // Check if the date is an off day
-        const isOffDay = await offDaysCollection.findOne({ date });
-        if (isOffDay) {
-          return res.status(400).json({ message: 'Selected date is an off day.' });
-        }
-
-        // Check if the time slot is already booked
-        const existingAppointment = await appCollection.findOne({ datetime });
-        if (existingAppointment) {
-          return res.status(400).json({ message: 'Selected time slot is already booked.' });
-        }
-
-        // Insert the new appointment
-        const result = await appCollection.insertOne(req.body);
-        res.status(201).json(result);
+        const result = await appCollection.find({}, { projection: { recaptcha: 0 } }).toArray();
+        res.send(result);
       } catch (error) {
-        res.status(500).json({ message: "Failed to add appointment", error });
+        console.error('Error fetching appointment:', error);
+        res.status(500).send('Internal Server Error');
       }
     });
+
+      // Endpoint to add an appointment
+      app.post('/addapp', async (req, res) => {
+        try {
+          const newApp = req.body;
+          const existingAppointment = await appCollection.findOne({ datetime: newApp.datetime });
+  
+          if (existingAppointment) {
+            return res.status(400).json({ message: 'Selected time slot is already booked.' });
+          }
+  
+          const isOffDay = await offDaysCollection.findOne({ date: newApp.datetime.split('T')[0] });
+          if (isOffDay) {
+            return res.status(400).json({ message: 'Selected day is not available for appointments.' });
+          }
+  
+          const result = await appCollection.insertOne(newApp);
+  
+          // Send confirmation email
+   
+          
+  
+          res.status(201).send(result);
+        } catch (error) {
+          res.status(500).send({ message: "Failed to add appointment", error });
+        }
+      });
+  
+      
 
     // Endpoint to check available time slots for a given date
     app.get('/check-available-time', async (req, res) => {
@@ -236,16 +265,13 @@ async function run() {
     app.get('/check-slot', async (req, res) => {
       try {
         const { datetime } = req.query;
-        const date = datetime.split('T')[0];
 
-        // Check if the time slot is already booked
         const existingAppointment = await appCollection.findOne({ datetime });
         if (existingAppointment) {
           return res.json({ available: false });
         }
 
-        // Check if the date is an off day
-        const isOffDay = await offDaysCollection.findOne({ date });
+        const isOffDay = await offDaysCollection.findOne({ date: datetime.split('T')[0] });
         if (isOffDay) {
           return res.json({ available: false });
         }
@@ -256,8 +282,9 @@ async function run() {
       }
     });
 
-    // Endpoint to fetch off days
-    app.get('/offdays', async (req, res) => {
+    // Endpoint to mark days as off for appointments
+     // Endpoint to fetch off days
+     app.get('/offdays', async (req, res) => {
       try {
         const result = await offDaysCollection.find().toArray();
         res.json(result.map(day => day.date)); // Send only the dates
@@ -267,17 +294,31 @@ async function run() {
     });
 
     // Endpoint to mark days as off for appointments
+    // app.post('/offdays', async (req, res) => {
+    //   try {
+    //     const { date } = req.body;
+    //     const existingOffDay = await offDaysCollection.findOne({ date });
+
+    //     if (existingOffDay) {
+    //       return res.status(400).json({ message: "This day is already marked as off." });
+    //     }
+
+    //     const result = await offDaysCollection.insertOne({ date });
+    //     res.status(201).json(result);
+    //   } catch (error) {
+    //     res.status(500).json({ message: "Failed to add off day", error });
+    //   }
+    // });
     app.post('/offdays', async (req, res) => {
       try {
         const { date } = req.body;
         const existingOffDay = await offDaysCollection.findOne({ date });
-
         if (existingOffDay) {
-          return res.status(400).json({ message: "This day is already marked as off." });
+            return res.status(400).json({ message: "This day is already marked as off." });
         }
-
         const result = await offDaysCollection.insertOne({ date });
         res.status(201).json(result);
+        
       } catch (error) {
         res.status(500).json({ message: "Failed to add off day", error });
       }
@@ -301,7 +342,8 @@ async function run() {
         res.status(500).json({ message: 'Server error' });
       }
     });
-    
+
+
     
     
     
