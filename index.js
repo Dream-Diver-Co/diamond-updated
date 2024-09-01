@@ -233,25 +233,81 @@ async function run() {
     app.get('/app/:date', async (req, res) => {
       const date = req.params.date; // 'YYYY-MM-DD'
       console.log('Received date:', date); // Check what date is being received
-      
+
       try {
-        const details = await YourModel.find({
+        const details = await appCollection.find({
           datetime: { $regex: `^${date}` }
-        });
-        
+        }).toArray(); // Convert cursor to array
+
         console.log('Fetched details:', details); // Check what is being fetched
-        
+
         if (details.length === 0) {
           return res.status(404).json({ message: 'No details found for this date.' });
         }
-    
+
         res.json(details);
       } catch (error) {
         console.error('Error fetching details:', error);
         res.status(500).json({ error: 'Server error' });
       }
     });
-    
+  // Delete operation for this app
+  app.delete('/app/:id', async (req, res) => {
+    const id = req.params.id;
+
+    try {
+      const result = await appCollection.deleteOne({ _id: new ObjectId(id) });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({ message: 'No details found for this ID.' });
+      }
+
+      res.json({ message: 'Detail deleted successfully.' });
+    } catch (error) {
+      console.error('Error deleting detail:', error);
+      res.status(500).json({ error: 'Server error' });
+    }
+  });
+  // ...............users details ...fetching
+app.get('/user-details', async (req, res) => {
+  const email = req.query.email;
+
+  try {
+    const userDetails = await appCollection.find({ email }).toArray();
+
+    if (userDetails.length === 0) {
+      return res.status(404).json({ message: 'No user details found for this email.' });
+    }
+
+    res.json(userDetails);
+  } catch (error) {
+    console.error('Error fetching user details:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// user details deleteion
+app.delete('/user-details/:id', async (req, res) => {
+  const id = req.params.id;
+
+  try {
+    const result = await appCollection.deleteOne({ _id: new ObjectId(id) });
+
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ message: 'No user details found with this ID.' });
+    }
+
+    res.json({ message: 'User detail deleted successfully.' });
+  } catch (error) {
+    console.error('Error deleting user detail:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+
+
+
+
     
      
 
