@@ -192,126 +192,181 @@ async function run() {
     // Endpoint to fetch appointment
     // Endpoint to fetch appointments
     // Endpoint to fetch appointments
-    app.get('/app', async (req, res) => {
-      try {
-        const result = await appCollection.find({}, { projection: { recaptcha: 0 } }).toArray();
-        res.send(result);
-      } catch (error) {
-        console.error('Error fetching appointment:', error);
-        res.status(500).send('Internal Server Error');
-      }
-    });
+        app.get('/app', async (req, res) => {
+          try {
+            const result = await appCollection.find({}, { projection: { recaptcha: 0 } }).toArray();
+            res.send(result);
+          } catch (error) {
+            console.error('Error fetching appointment:', error);
+            res.status(500).send('Internal Server Error');
+          }
+        });
 
-      // Endpoint to add an appointment
-      app.post('/addapp', async (req, res) => {
+          // Endpoint to add an appointment
+          app.post('/addapp', async (req, res) => {
+            try {
+              const newApp = req.body;
+              const existingAppointment = await appCollection.findOne({ datetime: newApp.datetime });
+      
+              if (existingAppointment) {
+                return res.status(400).json({ message: 'Selected time slot is already booked.' });
+              }
+      
+              const isOffDay = await offDaysCollection.findOne({ date: newApp.datetime.split('T')[0] });
+              if (isOffDay) {
+                return res.status(400).json({ message: 'Selected day is not available for appointments.' });
+              }
+      
+              const result = await appCollection.insertOne(newApp);
+      
+              // Send confirmation email
+      
+              
+      
+              res.status(201).send(result);
+            } catch (error) {
+              res.status(500).send({ message: "Failed to add appointment", error });
+            }
+          });
+      
+        // .............fetch based on date..............
+        app.get('/app/:date', async (req, res) => {
+          const date = req.params.date; // 'YYYY-MM-DD'
+          console.log('Received date:', date); // Check what date is being received
+
+          try {
+            const details = await appCollection.find({
+              datetime: { $regex: `^${date}` }
+            }).toArray(); // Convert cursor to array
+
+            console.log('Fetched details:', details); // Check what is being fetched
+
+            if (details.length === 0) {
+              return res.status(404).json({ message: 'No details found for this date.' });
+            }
+
+            res.json(details);
+          } catch (error) {
+            console.error('Error fetching details:', error);
+            res.status(500).json({ error: 'Server error' });
+          }
+        });
+      // Delete operation for this app
+      app.delete('/app/:id', async (req, res) => {
+        const id = req.params.id;
+
         try {
-          const newApp = req.body;
-          const existingAppointment = await appCollection.findOne({ datetime: newApp.datetime });
-  
-          if (existingAppointment) {
-            return res.status(400).json({ message: 'Selected time slot is already booked.' });
+          const result = await appCollection.deleteOne({ _id: new ObjectId(id) });
+
+          if (result.deletedCount === 0) {
+            return res.status(404).json({ message: 'No details found for this ID.' });
           }
-  
-          const isOffDay = await offDaysCollection.findOne({ date: newApp.datetime.split('T')[0] });
-          if (isOffDay) {
-            return res.status(400).json({ message: 'Selected day is not available for appointments.' });
-          }
-  
-          const result = await appCollection.insertOne(newApp);
-  
-          // Send confirmation email
-   
-          
-  
-          res.status(201).send(result);
+
+          res.json({ message: 'Detail deleted successfully.' });
         } catch (error) {
-          res.status(500).send({ message: "Failed to add appointment", error });
+          console.error('Error deleting detail:', error);
+          res.status(500).json({ error: 'Server error' });
         }
       });
-  
-    // .............fetch based on date..............
-    app.get('/app/:date', async (req, res) => {
-      const date = req.params.date; // 'YYYY-MM-DD'
-      console.log('Received date:', date); // Check what date is being received
+      // ...............users details ...fetching
+    app.get('/user-details', async (req, res) => {
+      const email = req.query.email;
 
       try {
-        const details = await appCollection.find({
-          datetime: { $regex: `^${date}` }
-        }).toArray(); // Convert cursor to array
+        const userDetails = await appCollection.find({ email }).toArray();
 
-        console.log('Fetched details:', details); // Check what is being fetched
-
-        if (details.length === 0) {
-          return res.status(404).json({ message: 'No details found for this date.' });
+        if (userDetails.length === 0) {
+          return res.status(404).json({ message: 'No user details found for this email.' });
         }
 
-        res.json(details);
+        res.json(userDetails);
       } catch (error) {
-        console.error('Error fetching details:', error);
+        console.error('Error fetching user details:', error);
         res.status(500).json({ error: 'Server error' });
       }
     });
-  // Delete operation for this app
-  app.delete('/app/:id', async (req, res) => {
-    const id = req.params.id;
 
-    try {
-      const result = await appCollection.deleteOne({ _id: new ObjectId(id) });
+    // user details deleteion
+    app.delete('/user-details/:id', async (req, res) => {
+      const id = req.params.id;
 
-      if (result.deletedCount === 0) {
-        return res.status(404).json({ message: 'No details found for this ID.' });
+      try {
+        const result = await appCollection.deleteOne({ _id: new ObjectId(id) });
+
+        if (result.deletedCount === 0) {
+          return res.status(404).json({ message: 'No user details found with this ID.' });
+        }
+
+        res.json({ message: 'User detail deleted successfully.' });
+      } catch (error) {
+        console.error('Error deleting user detail:', error);
+        res.status(500).json({ error: 'Server error' });
       }
+    });
 
-      res.json({ message: 'Detail deleted successfully.' });
-    } catch (error) {
-      console.error('Error deleting detail:', error);
-      res.status(500).json({ error: 'Server error' });
-    }
-  });
-  // ...............users details ...fetching
-app.get('/user-details', async (req, res) => {
-  const email = req.query.email;
-
-  try {
-    const userDetails = await appCollection.find({ email }).toArray();
-
-    if (userDetails.length === 0) {
-      return res.status(404).json({ message: 'No user details found for this email.' });
-    }
-
-    res.json(userDetails);
-  } catch (error) {
-    console.error('Error fetching user details:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// user details deleteion
-app.delete('/user-details/:id', async (req, res) => {
-  const id = req.params.id;
-
-  try {
-    const result = await appCollection.deleteOne({ _id: new ObjectId(id) });
-
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'No user details found with this ID.' });
-    }
-
-    res.json({ message: 'User detail deleted successfully.' });
-  } catch (error) {
-    console.error('Error deleting user detail:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-
-
-
-
-    
-     
 
     // Endpoint to check available time slots for a given date
+   // Endpoint to check available time slots for a given date
+// app.get('/check-available-time', async (req, res) => {
+//   try {
+//     const { date } = req.query;
+//     const startDate = new Date(date);
+//     const endDate = new Date(date);
+//     endDate.setDate(startDate.getDate() + 1); // Check availability for the whole day
+
+//     const appointments = await appCollection.find({
+//       datetime: {
+//         $gte: startDate.toISOString(),
+//         $lt: endDate.toISOString()
+//       }
+//     }).toArray();
+
+//     const bookedSlots = appointments.map(app => {
+//       const time = new Date(app.datetime).toTimeString().split(' ')[0].slice(0, 5);
+//       return time;
+//     });
+
+//     // Define possible time slots
+//     const possibleSlots = ['11:30', '13:00', '14:30', '16:00'];
+//     const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
+
+//     res.json({ slots: availableSlots });
+//   } catch (error) {
+//     res.status(500).json({ message: "Failed to check available slots", error });
+//   }
+// });
+
+ // Endpoint to check available time slots for a given date
+// app.get('/check-available-time', async (req, res) => {
+//   try {
+//     const { date } = req.query;
+//     const startDate = new Date(date);
+//     const endDate = new Date(date);
+//     endDate.setDate(startDate.getDate() + 1); // Check availability for the whole day
+
+//     const appointments = await appCollection.find({
+//       datetime: {
+//         $gte: startDate.toISOString(),
+//         $lt: endDate.toISOString()
+//       }
+//     }).toArray();
+
+//     const bookedSlots = appointments.map(app => {
+//       const time = new Date(app.datetime).toTimeString().split(' ')[0].slice(0, 5);
+//       return time;
+//     });
+
+//     // Define possible time slots
+//     const possibleSlots = ['11:30', '12:30', '2:00', '4:00'];
+//     const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
+
+//     res.json({ slots: availableSlots });
+//   } catch (error) {
+//     res.status(500).json({ message: "Failed to check available slots", error });
+//   }
+// });
+
+// ............new 
     app.get('/check-available-time', async (req, res) => {
       try {
         const { date } = req.query;
@@ -332,7 +387,7 @@ app.delete('/user-details/:id', async (req, res) => {
         });
 
         // Define possible time slots
-        const possibleSlots = ['11:30', '12:30', '2:00', '4:00'];
+        const possibleSlots = ['11:30', '13:00', '14:30', '16:00'];
         const availableSlots = possibleSlots.filter(slot => !bookedSlots.includes(slot));
 
         res.json({ slots: availableSlots });
@@ -340,6 +395,7 @@ app.delete('/user-details/:id', async (req, res) => {
         res.status(500).json({ message: "Failed to check available slots", error });
       }
     });
+      
 
     // Endpoint to check if a time slot is available
     app.get('/check-slot', async (req, res) => {
